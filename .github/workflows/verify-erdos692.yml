@@ -1,0 +1,35 @@
+name: Verify Erdős 692 H1
+on:
+  push:
+    branches: [verify/erdos692-whole-h1]
+permissions:
+  contents: read
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up pinned Lean source and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=proofs/Erdos692.erdos_692.variants.cambie_local_maxima.R1.H1.lean
+          python3 -I tools/lint.py "$f" data/catalog.json
+          c=$(jq -r .meta.upstreamCommit data/catalog.json)
+          git init -q "$RUNNER_TEMP/fc"
+          cd "$RUNNER_TEMP/fc"
+          git fetch -q --depth 1 https://github.com/google-deepmind/formal-conjectures "$c"
+          git checkout -q FETCH_HEAD
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          ~/.elan/bin/lake exe cache get
+      - name: Run upstream kernel and axioms checker
+        run: |
+          f=proofs/Erdos692.erdos_692.variants.cambie_local_maxima.R1.H1.lean
+          OMA_FC="$RUNNER_TEMP/fc" tools/check.sh "$f" verdict.json || true
+          cat verdict.json
+          jq -e '.verdict == "accepted"' verdict.json
